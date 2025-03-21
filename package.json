@@ -1,0 +1,45 @@
+{
+  "name": "aemet-api",
+  "version": "1.0.0",
+  "description": "Cliente TypeScript para la API de AEMET (Agencia Estatal de Meteorología)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src --ext .ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prepare": "npm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "aemet",
+    "meteorologia",
+    "clima",
+    "tiempo",
+    "api",
+    "españa",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.11.5",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "nock": "^14.0.1",
+    "ts-jest": "^29.2.6",
+    "typescript": "^5.3.3"
+  }
+}
