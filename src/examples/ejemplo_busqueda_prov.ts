@@ -6,7 +6,7 @@
 import { Aemet } from '../aemet';
 
 // Creamos una instancia de Aemet con tu API key
-const apiKey = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI4NDg0ODFAdW5pemFyLmVzIiwianRpIjoiYmE5ZWY3NmEtYjBiMC00MWE1LTkxNjAtMmUxMTFmMjM0ZjlmIiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE3NDI1NzEzODksInVzZXJJZCI6ImJhOWVmNzZhLWIwYjAtNDFhNS05MTYwLTJlMTExZjIzNGY5ZiIsInJvbGUiOiIifQ.uTR2vmhfRLnyk1oE1mBsq3PhXm7qQGzu3xP80ERTNak"; // Reemplaza con tu API key
+const apiKey = "YOUR_API_KEY"; // Reemplaza con tu API key
 const aemet = new Aemet(apiKey);
 
 async function buscarProvincia(){
