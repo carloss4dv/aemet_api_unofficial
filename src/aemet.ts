@@ -10,7 +10,8 @@ import {
   ClimateValuesParams,
   WeatherStation,
   ClimateValuesResponse,
-  ClimateValue
+  ClimateValue,
+  WeatherByCoordinatesResponse
 } from './lib/types';
 import { 
   DEFAULT_BASE_URL, 
@@ -658,6 +659,138 @@ export class Aemet {
     return provincia in PROVINCE_MAPPING 
       ? PROVINCE_MAPPING[provincia as keyof typeof PROVINCE_MAPPING] 
       : provincia;
+  }
+
+  /**
+   * Obtener datos meteorológicos para una ubicación y hora específicas
+   * @param latitud - Latitud de la ubicación
+   * @param longitud - Longitud de la ubicación
+   * @param provincia - Nombre de la provincia autónoma
+   * @returns Datos meteorológicos más cercanos a la ubicación y hora especificadas
+   */
+  async getWeatherByCoordinates(
+    latitud: number,
+    longitud: number,
+    provincia: string
+  ): Promise<WeatherByCoordinatesResponse> {
+    try {
+      // Obtener todas las estaciones
+      const stations = await this.getWeatherStations();
+      
+      // Obtener datos climatológicos considerando el retraso de 72 horas
+      const hoy = new Date();
+      const fechaDatos = new Date(hoy);
+      fechaDatos.setDate(hoy.getDate() - 3); // 72 horas = 3 días
+      
+      const fecha = `${fechaDatos.toISOString().split('T')[0]}`;
+      
+      const params: ClimateValuesParams = {
+        startDate: fecha,
+        endDate: fecha
+      };
+      
+      const datosClimaticos = await this.getClimateValues(params);
+      
+      // Filtrar estaciones por provincia
+      const estacionesProvincia = stations.filter(station => 
+        station.provincia.toLowerCase() === provincia.toLowerCase()
+      );
+      
+      if (estacionesProvincia.length === 0) {
+        throw new Error(`No se encontraron estaciones en la provincia ${provincia}`);
+      }
+      
+      // Encontrar la estación más cercana a las coordenadas proporcionadas
+      let estacionMasCercana: WeatherStation | null = null;
+      let distanciaMinima = Infinity;
+      
+      for (const station of estacionesProvincia) {
+        if (!station.geoposicion) continue;
+        
+        const distancia = this.calcularDistancia(
+          latitud,
+          longitud,
+          station.geoposicion.latitud,
+          station.geoposicion.longitud
+        );
+        
+        if (distancia < distanciaMinima) {
+          distanciaMinima = distancia;
+          estacionMasCercana = station;
+        }
+      }
+      
+      if (!estacionMasCercana) {
+        throw new Error('No se encontró ninguna estación cercana');
+      }
+      
+      // Filtrar observaciones por la estación seleccionada
+      const observacionesEstacion = datosClimaticos.values.filter(
+        obs => obs.indicativo === estacionMasCercana.indicativo
+      );
+      
+      if (observacionesEstacion.length === 0) {
+        throw new Error('No se encontraron datos para la estación seleccionada');
+      }
+      
+      // Como los datos son diarios, tomamos la primera observación
+      const observacion = observacionesEstacion[0];
+      
+      return {
+        station: estacionMasCercana,
+        weatherData: {
+          fecha: observacion.fecha,
+          tmax: observacion.tmax,
+          horatmax: observacion.horatmax,
+          tmin: observacion.tmin,
+          horatmin: observacion.horatmin,
+          tm: observacion.tm,
+          prec: observacion.prec,
+          presMax: observacion.presMax,
+          presMin: observacion.presMin,
+          velmedia: observacion.velmedia,
+          racha: observacion.racha,
+          dir: observacion.dir,
+          inso: observacion.inso,
+          nieve: observacion.nieve
+        },
+        distancia: distanciaMinima
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Error al obtener datos meteorológicos: ${error.message}`);
+      }
+      throw new Error('Error desconocido al obtener datos meteorológicos');
+    }
+  }
+
+  /**
+   * Calcular la distancia entre dos puntos geográficos usando la fórmula de Haversine
+   * @param lat1 - Latitud del primer punto
+   * @param lon1 - Longitud del primer punto
+   * @param lat2 - Latitud del segundo punto
+   * @param lon2 - Longitud del segundo punto
+   * @returns Distancia en kilómetros
+   */
+  private calcularDistancia(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Radio de la Tierra en kilómetros
+    const dLat = this.toRad(lat2 - lat1);
+    const dLon = this.toRad(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
+
+  /**
+   * Convertir grados a radianes
+   * @param grados - Ángulo en grados
+   * @returns Ángulo en radianes
+   */
+  private toRad(grados: number): number {
+    return grados * (Math.PI / 180);
   }
 }
 

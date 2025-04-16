@@ -219,4 +219,94 @@ export interface ClimateValuesResponse {
    * Valores climatológicos diarios
    */
   values: ClimateValue[];
+}
+
+/**
+ * Respuesta con datos meteorológicos para una ubicación y hora específicas
+ */
+export interface WeatherByCoordinatesResponse {
+  /**
+   * Información de la estación más cercana
+   */
+  station: WeatherStation;
+  
+  /**
+   * Datos meteorológicos más cercanos a la hora solicitada
+   */
+  weatherData: {
+    /**
+     * Fecha de la observación
+     */
+    fecha: string;
+    
+    /**
+     * Temperatura máxima (°C)
+     */
+    tmax?: number;
+    
+    /**
+     * Hora de la temperatura máxima (HHMM)
+     */
+    horatmax?: string;
+    
+    /**
+     * Temperatura mínima (°C)
+     */
+    tmin?: number;
+    
+    /**
+     * Hora de la temperatura mínima (HHMM)
+     */
+    horatmin?: string;
+    
+    /**
+     * Temperatura media (°C)
+     */
+    tm?: number;
+    
+    /**
+     * Precipitación diaria (mm)
+     */
+    prec?: number;
+    
+    /**
+     * Presión máxima al nivel de la estación (hPa)
+     */
+    presMax?: number;
+    
+    /**
+     * Presión mínima al nivel de la estación (hPa)
+     */
+    presMin?: number;
+    
+    /**
+     * Velocidad media del viento (m/s)
+     */
+    velmedia?: number;
+    
+    /**
+     * Velocidad máxima del viento (m/s)
+     */
+    racha?: number;
+    
+    /**
+     * Dirección del viento (grados)
+     */
+    dir?: number;
+    
+    /**
+     * Insolación diaria (horas)
+     */
+    inso?: number;
+    
+    /**
+     * Presencia de niebla durante el día (0/1)
+     */
+    nieve?: number;
+  };
+  
+  /**
+   * Distancia en kilómetros a la estación más cercana
+   */
+  distancia: number;
 } 
