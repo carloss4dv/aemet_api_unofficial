@@ -8,17 +8,14 @@ async function main() {
     // Ejemplo con Madrid (coordenadas aproximadas del centro)
     const latitud = 40.4168;
     const longitud = -3.7038;
-    const provincia = 'MADRID';
 
     console.log('Obteniendo datos meteorológicos para:');
     console.log(`- Coordenadas: ${latitud}, ${longitud}`);
-    console.log(`- Provincia: ${provincia}`);
     console.log('----------------------------------------');
 
     const datos = await aemet.getWeatherByCoordinates(
       latitud,
-      longitud,
-      provincia
+      longitud
     );
 
     console.log('Datos de la estación:');

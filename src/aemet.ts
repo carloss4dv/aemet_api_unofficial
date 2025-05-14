@@ -665,13 +665,11 @@ export class Aemet {
    * Obtener datos meteorológicos para una ubicación y hora específicas
    * @param latitud - Latitud de la ubicación
    * @param longitud - Longitud de la ubicación
-   * @param provincia - Nombre de la provincia autónoma
    * @returns Datos meteorológicos más cercanos a la ubicación y hora especificadas
    */
   async getWeatherByCoordinates(
     latitud: number,
-    longitud: number,
-    provincia: string
+    longitud: number
   ): Promise<WeatherByCoordinatesResponse> {
     try {
       // Obtener todas las estaciones
@@ -691,20 +689,11 @@ export class Aemet {
       
       const datosClimaticos = await this.getClimateValues(params);
       
-      // Filtrar estaciones por provincia
-      const estacionesProvincia = stations.filter(station => 
-        station.provincia.toLowerCase() === provincia.toLowerCase()
-      );
-      
-      if (estacionesProvincia.length === 0) {
-        throw new Error(`No se encontraron estaciones en la provincia ${provincia}`);
-      }
-      
       // Encontrar la estación más cercana a las coordenadas proporcionadas
       let estacionMasCercana: WeatherStation | null = null;
       let distanciaMinima = Infinity;
       
-      for (const station of estacionesProvincia) {
+      for (const station of stations) {
         if (!station.geoposicion) continue;
         
         const distancia = this.calcularDistancia(
