@@ -18,26 +18,29 @@ async function main() {
       longitud
     );
 
-    console.log('Datos de la estación:');
-    console.log(`- Nombre: ${datos.station.nombre}`);
-    console.log(`- Provincia: ${datos.station.provincia}`);
-    console.log(`- Altitud: ${datos.station.altitud}m`);
+    console.log('Datos del municipio:');
+    console.log(`- Código: ${datos.municipalityCode}`);
+    console.log(`- Nombre: ${datos.name}`);
+    console.log(`- Provincia: ${datos.province}`);
     console.log(`- Distancia: ${datos.distancia.toFixed(2)}km`);
     console.log('----------------------------------------');
 
     console.log('Datos meteorológicos:');
     console.log(`- Fecha: ${datos.weatherData.fecha}`);
-    console.log(`- Temperatura máxima: ${datos.weatherData.tmax}°C (${datos.weatherData.horatmax})`);
-    console.log(`- Temperatura mínima: ${datos.weatherData.tmin}°C (${datos.weatherData.horatmin})`);
-    console.log(`- Temperatura media: ${datos.weatherData.tm}°C`);
-    console.log(`- Precipitación: ${datos.weatherData.prec}mm`);
-    console.log(`- Presión máxima: ${datos.weatherData.presMax}hPa`);
-    console.log(`- Presión mínima: ${datos.weatherData.presMin}hPa`);
-    console.log(`- Viento medio: ${datos.weatherData.velmedia}m/s`);
-    console.log(`- Racha máxima: ${datos.weatherData.racha}m/s`);
-    console.log(`- Dirección viento: ${datos.weatherData.dir}°`);
-    console.log(`- Insolación: ${datos.weatherData.inso} horas`);
-    console.log(`- Nieve: ${datos.weatherData.nieve === 1 ? 'Sí' : 'No'}`);
+    console.log(`- Periodo: ${datos.weatherData.periodo}h`);
+    console.log(`- Estado del cielo: ${datos.weatherData.estadoCielo.descripcion} (${datos.weatherData.estadoCielo.value})`);
+    console.log(`- Temperatura: ${datos.weatherData.temperatura}°C`);
+    console.log(`- Sensación térmica: ${datos.weatherData.sensTermica}°C`);
+    console.log(`- Precipitación: ${datos.weatherData.precipitacion}mm`);
+    console.log(`- Probabilidad precipitación: ${datos.weatherData.probPrecipitacion}%`);
+    console.log(`- Probabilidad tormenta: ${datos.weatherData.probTormenta}%`);
+    console.log(`- Nieve: ${datos.weatherData.nieve}mm`);
+    console.log(`- Probabilidad nieve: ${datos.weatherData.probNieve}%`);
+    console.log(`- Humedad relativa: ${datos.weatherData.humedadRelativa}%`);
+    console.log(`- Viento: ${datos.weatherData.viento.velocidad}m/s dirección ${datos.weatherData.viento.direccion}`);
+    if (datos.weatherData.viento.rachaMax) {
+      console.log(`- Racha máxima: ${datos.weatherData.viento.rachaMax}m/s`);
+    }
 
   } catch (error) {
     console.error('Error:', error instanceof Error ? error.message : 'Error desconocido');

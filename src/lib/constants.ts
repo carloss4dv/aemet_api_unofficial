@@ -28,6 +28,8 @@ export const ENDPOINTS = {
   CLIMATE_VALUES_DAILY: '/valores/climatologicos/diarios/datos/',
   // Estaciones para valores climatológicos
   CLIMATE_STATIONS: '/valores/climatologicos/inventarioestaciones/todasestaciones/',
+  // Predicción horaria por municipio
+  FORECAST_MUNICIPALITY_HOURLY: '/prediccion/especifica/municipio/horaria/',
 };
 
 // Códigos de estado del cielo y sus descripciones

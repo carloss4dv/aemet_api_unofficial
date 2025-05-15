@@ -76,6 +76,12 @@ export interface ClimateValuesParams {
    * Fecha de fin para la consulta (formato: AAAA-MM-DD)
    */
   endDate: string;
+
+  /**
+   * Código INE del municipio (5 dígitos)
+   * Si se especifica, se usará el endpoint de predicción horaria por municipio
+   */
+  municipalityCode?: string;
 }
 
 /**
@@ -219,6 +225,11 @@ export interface ClimateValuesResponse {
    * Valores climatológicos diarios
    */
   values: ClimateValue[];
+  
+  /**
+   * Datos crudos de la respuesta (para exploración)
+   */
+  rawData?: any;
 }
 
 /**
@@ -226,87 +237,94 @@ export interface ClimateValuesResponse {
  */
 export interface WeatherByCoordinatesResponse {
   /**
-   * Información de la estación más cercana
+   * Código del municipio
    */
-  station: WeatherStation;
+  municipalityCode: string;
   
   /**
-   * Datos meteorológicos más cercanos a la hora solicitada
+   * Nombre del municipio
+   */
+  name: string;
+  
+  /**
+   * Provincia del municipio
+   */
+  province: string;
+  
+  /**
+   * Datos meteorológicos del periodo más cercano a la hora actual
    */
   weatherData: {
     /**
-     * Fecha de la observación
+     * Fecha y hora del periodo
      */
     fecha: string;
     
     /**
-     * Temperatura máxima (°C)
+     * Periodo horario (HH)
      */
-    tmax?: number;
+    periodo: string;
     
     /**
-     * Hora de la temperatura máxima (HHMM)
+     * Estado del cielo
      */
-    horatmax?: string;
+    estadoCielo: {
+      value: string;
+      descripcion: string;
+    };
     
     /**
-     * Temperatura mínima (°C)
+     * Precipitación (mm)
      */
-    tmin?: number;
+    precipitacion: number;
     
     /**
-     * Hora de la temperatura mínima (HHMM)
+     * Probabilidad de precipitación (%)
      */
-    horatmin?: string;
+    probPrecipitacion: number;
     
     /**
-     * Temperatura media (°C)
+     * Probabilidad de tormenta (%)
      */
-    tm?: number;
+    probTormenta: number;
     
     /**
-     * Precipitación diaria (mm)
+     * Nieve (mm)
      */
-    prec?: number;
+    nieve: number;
     
     /**
-     * Presión máxima al nivel de la estación (hPa)
+     * Probabilidad de nieve (%)
      */
-    presMax?: number;
+    probNieve: number;
     
     /**
-     * Presión mínima al nivel de la estación (hPa)
+     * Temperatura (°C)
      */
-    presMin?: number;
+    temperatura: number;
     
     /**
-     * Velocidad media del viento (m/s)
+     * Sensación térmica (°C)
      */
-    velmedia?: number;
+    sensTermica: number;
     
     /**
-     * Velocidad máxima del viento (m/s)
+     * Humedad relativa (%)
      */
-    racha?: number;
+    humedadRelativa: number;
     
     /**
-     * Dirección del viento (grados)
+     * Viento
      */
-    dir?: number;
-    
-    /**
-     * Insolación diaria (horas)
-     */
-    inso?: number;
-    
-    /**
-     * Presencia de niebla durante el día (0/1)
-     */
-    nieve?: number;
+    viento: {
+      direccion: string;
+      velocidad: number;
+      rachaMax?: number;
+    };
   };
   
   /**
-   * Distancia en kilómetros a la estación más cercana
+   * Distancia en kilómetros al municipio más cercano
    */
   distancia: number;
 } 

@@ -33,6 +33,7 @@ export class Aemet {
   private baseUrl: string;
   private timeout: number;
   private provinciaIndex: { [key: string]: any[] } = {};
+  private municipios: any[] = [];
 
   /**
    * Inicializa un nuevo cliente de AEMET
@@ -407,10 +408,89 @@ export class Aemet {
    * @returns Valores climatológicos diarios
    */
   async getClimateValues(params: ClimateValuesParams): Promise<ClimateValuesResponse> {
-    if ( !params.startDate || !params.endDate) {
-      throw new Error('Se requieren los parámetros: stationId, startDate y endDate');
+    if (!params.startDate || !params.endDate) {
+      throw new Error('Se requieren los parámetros: startDate y endDate');
     }
     
+    // Si se ha proporcionado un código de municipio, usar el endpoint de predicción horaria
+    if (params.municipalityCode) {
+      if (params.municipalityCode.length !== 5) {
+        throw new Error('El código de municipio debe tener 5 dígitos');
+      }
+      
+      try {
+        const url = `${this.baseUrl}${ENDPOINTS.FORECAST_MUNICIPALITY_HOURLY}${params.municipalityCode}`;
+        const data = await fetchAemetData(url, this.apiKey, this.timeout);
+        
+        // Verificar si los datos son un array y tomar el primer elemento
+        const municipioData = Array.isArray(data) ? data[0] : data;
+        
+        if (!municipioData || !municipioData.nombre || !municipioData.provincia || !municipioData.prediccion) {
+          throw new Error('Error en la API de AEMET');
+        }
+        
+        // Creamos una estación virtual para el municipio
+        const station: WeatherStation = {
+          indicativo: params.municipalityCode,
+          nombre: municipioData.nombre || 'Municipio',
+          provincia: municipioData.provincia || 'Desconocida',
+          altitud: 0
+        };
+        
+        // Adaptamos los datos al formato de respuesta esperado
+        const values: ClimateValue[] = [];
+        
+        // Si hay predicciones, procesamos cada día
+        if (municipioData.prediccion?.dia && Array.isArray(municipioData.prediccion.dia)) {
+          for (const dia of municipioData.prediccion.dia) {
+            // Para cada día, procesamos cada periodo horario
+            if (dia.estadoCielo && Array.isArray(dia.estadoCielo)) {
+              for (const estado of dia.estadoCielo) {
+                if (!estado.periodo) continue;
+
+                // Recopilamos todos los datos para este periodo
+                const precipitacion = dia.precipitacion?.find((p: any) => p.periodo === estado.periodo)?.value || 0;
+                const temperatura = dia.temperatura?.find((t: any) => t.periodo === estado.periodo)?.value;
+                const viento = dia.vientoAndRachaMax?.find((v: any) => v.periodo === estado.periodo);
+
+                values.push({
+                  fecha: `${dia.fecha.split('T')[0]}T${estado.periodo.padStart(2, '0')}:00:00`,
+                  indicativo: params.municipalityCode,
+                  nombre: municipioData.nombre || 'Municipio',
+                  provincia: municipioData.provincia || 'Desconocida',
+                  altitud: 0,
+                  tmax: parseFloat(temperatura) || undefined,
+                  tmin: parseFloat(temperatura) || undefined,
+                  tm: parseFloat(temperatura) || undefined,
+                  prec: parseFloat(precipitacion) || undefined,
+                  velmedia: viento?.velocidad?.[0] ? parseFloat(viento.velocidad[0]) : undefined,
+                  racha: viento?.value ? parseFloat(viento.value) : undefined,
+                  dir: viento?.direccion?.[0] === 'N' ? 0 :
+                       viento?.direccion?.[0] === 'NE' ? 45 :
+                       viento?.direccion?.[0] === 'E' ? 90 :
+                       viento?.direccion?.[0] === 'SE' ? 135 :
+                       viento?.direccion?.[0] === 'S' ? 180 :
+                       viento?.direccion?.[0] === 'SO' ? 225 :
+                       viento?.direccion?.[0] === 'O' ? 270 :
+                       viento?.direccion?.[0] === 'NO' ? 315 : undefined
+                });
+              }
+            }
+          }
+        }
+        
+        return {
+          station,
+          values,
+          rawData: municipioData
+        };
+      } catch (error) {
+        console.error('Error al obtener la predicción horaria:', error);
+        throw new Error('Error en la API de AEMET');
+      }
+    }
+    
+    // Si no se proporcionó un código de municipio, seguir con la lógica original
     // Validamos el formato de fechas
     // Ahora aceptamos tanto formato AAAA-MM-DD como AAAA-MM-DDTHH:MM:SSUTC
     const simpleDateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -665,91 +745,158 @@ export class Aemet {
    * Obtener datos meteorológicos para una ubicación y hora específicas
    * @param latitud - Latitud de la ubicación
    * @param longitud - Longitud de la ubicación
+   * @param municipalityCode - Código opcional del municipio (5 dígitos)
    * @returns Datos meteorológicos más cercanos a la ubicación y hora especificadas
    */
   async getWeatherByCoordinates(
     latitud: number,
-    longitud: number
+    longitud: number,
+    municipalityCode?: string
   ): Promise<WeatherByCoordinatesResponse> {
     try {
-      // Obtener todas las estaciones
-      const stations = await this.getWeatherStations();
+      // Si se proporciona un código de municipio, lo usamos directamente
+      const codigoMunicipio = municipalityCode || await this.getMunicipioCercano(latitud, longitud);
       
-      // Obtener datos climatológicos considerando el retraso de 72 horas
-      const hoy = new Date();
-      const fechaDatos = new Date(hoy);
-      fechaDatos.setDate(hoy.getDate() - 3); // 72 horas = 3 días
+      if (!codigoMunicipio || codigoMunicipio.length !== 5) {
+        throw new Error('Error en la API de AEMET');
+      }
+
+      // Obtenemos los datos de predicción horaria
+      const url = `${this.baseUrl}${ENDPOINTS.FORECAST_MUNICIPALITY_HOURLY}${codigoMunicipio}`;
+      const data = await fetchAemetData(url, this.apiKey, this.timeout);
       
-      const fecha = `${fechaDatos.toISOString().split('T')[0]}`;
+      // Verificar si los datos son un array y tomar el primer elemento
+      const municipioData = Array.isArray(data) ? data[0] : data;
       
-      const params: ClimateValuesParams = {
-        startDate: fecha,
-        endDate: fecha
+      if (!municipioData || !municipioData.nombre || !municipioData.provincia) {
+        throw new Error('Error en la API de AEMET');
+      }
+
+      // Obtenemos el periodo más cercano a la hora actual
+      const periodoMasCercano = this.getPeriodoMasCercano(data);
+
+      // Calculamos la distancia si no se proporcionó un código de municipio
+      const distancia = municipalityCode ? 0 : await this.calcularDistanciaMunicipio(latitud, longitud, codigoMunicipio);
+
+      return {
+        municipalityCode: codigoMunicipio,
+        name: municipioData.nombre || '',
+        province: municipioData.provincia || '',
+        weatherData: periodoMasCercano,
+        distancia
       };
-      
-      const datosClimaticos = await this.getClimateValues(params);
-      
-      // Encontrar la estación más cercana a las coordenadas proporcionadas
-      let estacionMasCercana: WeatherStation | null = null;
+    } catch (error) {
+      console.error('Error en getWeatherByCoordinates:', error);
+      throw new Error('Error en la API de AEMET');
+    }
+  }
+
+  /**
+   * Obtiene el código del municipio más cercano a las coordenadas dadas
+   * @param latitud - Latitud del punto
+   * @param longitud - Longitud del punto
+   * @returns Código del municipio más cercano
+   */
+  private async getMunicipioCercano(latitud: number, longitud: number): Promise<string> {
+    try {
+      // Obtener todos los municipios si no están cargados
+      if (!this.municipios || this.municipios.length === 0) {
+        this.municipios = await this.getMunicipalities();
+      }
+
+      // Verificar que se hayan cargado municipios
+      if (!Array.isArray(this.municipios) || this.municipios.length === 0) {
+        throw new Error('Error en la API de AEMET');
+      }
+
+      let municipioMasCercano = null;
       let distanciaMinima = Infinity;
-      
-      for (const station of stations) {
-        if (!station.geoposicion) continue;
+
+      // Calcular la distancia a cada municipio
+      for (const municipio of this.municipios) {
+        // Verificar que el municipio tiene coordenadas válidas
+        if (!municipio.latitud_dec || !municipio.longitud_dec) continue;
+        
+        const latitudMunicipio = parseFloat(municipio.latitud_dec);
+        const longitudMunicipio = parseFloat(municipio.longitud_dec);
+        
+        // Verificar que las coordenadas son números válidos
+        if (isNaN(latitudMunicipio) || isNaN(longitudMunicipio)) continue;
         
         const distancia = this.calcularDistancia(
           latitud,
           longitud,
-          station.geoposicion.latitud,
-          station.geoposicion.longitud
+          latitudMunicipio,
+          longitudMunicipio
         );
-        
+
         if (distancia < distanciaMinima) {
           distanciaMinima = distancia;
-          estacionMasCercana = station;
+          municipioMasCercano = municipio;
         }
       }
-      
-      if (!estacionMasCercana) {
-        throw new Error('No se encontró ninguna estación cercana');
+
+      if (!municipioMasCercano) {
+        throw new Error('Error en la API de AEMET');
       }
-      
-      // Filtrar observaciones por la estación seleccionada
-      const observacionesEstacion = datosClimaticos.values.filter(
-        obs => obs.indicativo === estacionMasCercana.indicativo
-      );
-      
-      if (observacionesEstacion.length === 0) {
-        throw new Error('No se encontraron datos para la estación seleccionada');
-      }
-      
-      // Como los datos son diarios, tomamos la primera observación
-      const observacion = observacionesEstacion[0];
-      
-      return {
-        station: estacionMasCercana,
-        weatherData: {
-          fecha: observacion.fecha,
-          tmax: observacion.tmax,
-          horatmax: observacion.horatmax,
-          tmin: observacion.tmin,
-          horatmin: observacion.horatmin,
-          tm: observacion.tm,
-          prec: observacion.prec,
-          presMax: observacion.presMax,
-          presMin: observacion.presMin,
-          velmedia: observacion.velmedia,
-          racha: observacion.racha,
-          dir: observacion.dir,
-          inso: observacion.inso,
-          nieve: observacion.nieve
-        },
-        distancia: distanciaMinima
-      };
+
+      // Devolver el código del municipio sin el prefijo 'id'
+      return municipioMasCercano.id.replace('id', '');
     } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Error al obtener datos meteorológicos: ${error.message}`);
+      console.error('Error al obtener el municipio más cercano:', error);
+      throw new Error('Error en la API de AEMET');
+    }
+  }
+
+  /**
+   * Calcula la distancia entre un punto y un municipio
+   * @param latitud - Latitud del punto
+   * @param longitud - Longitud del punto
+   * @param codigoMunicipio - Código del municipio
+   * @returns Distancia en kilómetros
+   */
+  private async calcularDistanciaMunicipio(
+    latitud: number,
+    longitud: number,
+    codigoMunicipio: string
+  ): Promise<number> {
+    try {
+      // Obtener todos los municipios si no están cargados
+      if (!this.municipios || this.municipios.length === 0) {
+        this.municipios = await this.getMunicipalities();
       }
-      throw new Error('Error desconocido al obtener datos meteorológicos');
+
+      // Verificar que se hayan cargado municipios
+      if (!Array.isArray(this.municipios) || this.municipios.length === 0) {
+        throw new Error('Error en la API de AEMET');
+      }
+
+      // Buscar el municipio por su código
+      const municipio = this.municipios.find(m => m.id.replace('id', '') === codigoMunicipio);
+      
+      if (!municipio) {
+        throw new Error('Error en la API de AEMET');
+      }
+
+      // Verificar que el municipio tiene coordenadas válidas
+      if (!municipio.latitud_dec || !municipio.longitud_dec) {
+        throw new Error('Error en la API de AEMET');
+      }
+
+      // Usar las coordenadas decimales del municipio
+      const latitudMunicipio = parseFloat(municipio.latitud_dec);
+      const longitudMunicipio = parseFloat(municipio.longitud_dec);
+
+      // Verificar que las coordenadas son números válidos
+      if (isNaN(latitudMunicipio) || isNaN(longitudMunicipio)) {
+        throw new Error('Error en la API de AEMET');
+      }
+
+      // Calcular la distancia entre los puntos
+      return this.calcularDistancia(latitud, longitud, latitudMunicipio, longitudMunicipio);
+    } catch (error) {
+      console.error('Error al calcular la distancia al municipio:', error);
+      throw new Error('Error en la API de AEMET');
     }
   }
 
@@ -781,7 +928,150 @@ export class Aemet {
   private toRad(grados: number): number {
     return grados * (Math.PI / 180);
   }
+
+  /**
+   * Obtiene los datos del periodo más cercano a la hora actual
+   * @param data - Datos de predicción horaria
+   * @returns Datos del periodo más cercano
+   */
+  private getPeriodoMasCercano(data: any): any {
+    try {
+      // Verificar si los datos son un array y tomar el primer elemento
+      const municipioData = Array.isArray(data) ? data[0] : data;
+      
+      if (!municipioData?.prediccion?.dia || !Array.isArray(municipioData.prediccion.dia)) {
+        throw new Error('Error en la API de AEMET');
+      }
+
+      const horaActual = new Date().getHours();
+      let periodoMasCercano = null;
+      let diferenciaMinimaHoras = Infinity;
+
+      // Buscamos en todos los días disponibles
+      for (const dia of municipioData.prediccion.dia) {
+        // Verificamos si el día tiene datos de estado del cielo
+        if (!dia.estadoCielo || !Array.isArray(dia.estadoCielo)) continue;
+
+        // Buscamos el periodo más cercano a la hora actual
+        for (const estado of dia.estadoCielo) {
+          if (!estado.periodo) continue;
+
+          const horaEstado = parseInt(estado.periodo, 10);
+          if (isNaN(horaEstado)) continue;
+
+          // Calculamos la diferencia de horas
+          const diferencia = Math.abs(horaEstado - horaActual);
+          
+          // Si encontramos un periodo más cercano, actualizamos
+          if (diferencia < diferenciaMinimaHoras) {
+            diferenciaMinimaHoras = diferencia;
+            
+            // Recopilamos todos los datos para este periodo
+            const precipitacion = dia.precipitacion?.find((p: any) => p.periodo === estado.periodo)?.value || 0;
+            const probPrec = dia.probPrecipitacion?.find((p: any) => 
+              p.periodo.includes(estado.periodo.padStart(2, '0'))
+            )?.value || 0;
+            const probTorm = dia.probTormenta?.find((p: any) => 
+              p.periodo.includes(estado.periodo.padStart(2, '0'))
+            )?.value || 0;
+            const nieve = dia.nieve?.find((n: any) => n.periodo === estado.periodo)?.value || 0;
+            const probNieve = dia.probNieve?.find((n: any) => 
+              n.periodo.includes(estado.periodo.padStart(2, '0'))
+            )?.value || 0;
+            const temperatura = dia.temperatura?.find((t: any) => t.periodo === estado.periodo)?.value;
+            const sensTermica = dia.sensTermica?.find((s: any) => s.periodo === estado.periodo)?.value;
+            const humedad = dia.humedadRelativa?.find((h: any) => h.periodo === estado.periodo)?.value;
+            const viento = dia.vientoAndRachaMax?.find((v: any) => v.periodo === estado.periodo);
+
+            // Construir una fecha correcta con la hora del periodo
+            const fechaBase = dia.fecha.split('T')[0];
+            const fechaConHora = `${fechaBase}T${estado.periodo.padStart(2, '0')}:00:00`;
+
+            periodoMasCercano = {
+              fecha: fechaConHora,
+              periodo: estado.periodo,
+              estadoCielo: {
+                value: estado.value,
+                descripcion: estado.descripcion
+              },
+              precipitacion: parseFloat(precipitacion),
+              probPrecipitacion: parseInt(probPrec, 10),
+              probTormenta: parseInt(probTorm, 10),
+              nieve: parseFloat(nieve),
+              probNieve: parseInt(probNieve, 10),
+              temperatura: parseFloat(temperatura),
+              sensTermica: parseFloat(sensTermica),
+              humedadRelativa: parseInt(humedad, 10),
+              viento: {
+                direccion: viento?.direccion?.[0] || '',
+                velocidad: parseInt(viento?.velocidad?.[0] || '0', 10),
+                rachaMax: viento?.value ? parseInt(viento.value, 10) : undefined
+              }
+            };
+          }
+        }
+      }
+
+      if (!periodoMasCercano) {
+        throw new Error('Error en la API de AEMET');
+      }
+
+      return periodoMasCercano;
+    } catch (error) {
+      console.error('Error al obtener el periodo más cercano:', error);
+      throw new Error('Error en la API de AEMET');
+    }
+  }
 }
 
 // También exportamos el tipo AemetOptions para uso externo
 export { AemetOptions }; 
+
+/**
+ * Ejemplo de uso del nuevo endpoint de predicción horaria por municipio
+ * 
+ * ```typescript
+ * import { Aemet } from './aemet';
+ * 
+ * // Inicializar cliente con tu API key
+ * const aemet = new Aemet('TU_API_KEY');
+ * 
+ * // Ejemplo 1: Obtener predicción horaria por municipio usando getClimateValues
+ * async function ejemploPrediccionHoraria() {
+ *   try {
+ *     const params = {
+ *       startDate: '2023-09-01',
+ *       endDate: '2023-09-01',
+ *       municipalityCode: '28079' // Madrid
+ *     };
+ *     
+ *     const resultado = await aemet.getClimateValues(params);
+ *     console.log('Datos de predicción horaria:', resultado);
+ *     console.log('Datos crudos para explorar la estructura:', resultado.rawData);
+ *   } catch (error) {
+ *     console.error('Error:', error);
+ *   }
+ * }
+ * 
+ * // Ejemplo 2: Obtener predicción horaria usando getWeatherByCoordinates con código de municipio
+ * async function ejemploPrediccionPorCoordenadas() {
+ *   try {
+ *     // Las coordenadas se ignoran cuando se proporciona un código de municipio
+ *     const resultado = await aemet.getWeatherByCoordinates(
+ *       40.4165, // latitud (se ignora si se proporciona municipalityCode)
+ *       -3.7026, // longitud (se ignora si se proporciona municipalityCode)
+ *       '28079'  // Madrid
+ *     );
+ *     
+ *     console.log('Datos meteorológicos:', resultado);
+ *     console.log('Datos crudos para explorar la estructura:', resultado.rawData);
+ *   } catch (error) {
+ *     console.error('Error:', error);
+ *   }
+ * }
+ * 
+ * // Ejecutar ejemplos
+ * ejemploPrediccionHoraria();
+ * ejemploPrediccionPorCoordenadas();
+ * ```
+ */ 
