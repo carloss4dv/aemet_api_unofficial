@@ -12,8 +12,12 @@ const aemet = new Aemet(apiKey);
 async function buscarProvincia(){
     console.log('=== BÚSQUEDA DE PROVINCIA ===');
     
-    // Buscamos la provincia de Cádiz
-    const params = { startDate: '2023-01-01', endDate: '2023-01-15' }; // Define appropriate params
+    // Buscamos la provincia de Asturias
+    const params = { 
+      startDate: '2023-01-01', 
+      endDate: '2023-01-15',
+      stationId: '1249X' // Estación de Oviedo como ejemplo
+    }; 
     const provincia = await aemet.getClimateSummaryByProvincia(params, 'Asturias');
     
     console.log('Provincia encontrada:', provincia);
