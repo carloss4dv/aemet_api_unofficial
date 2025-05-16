@@ -19,7 +19,7 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
 
   while (intentos <= MAX_RETRIES) {
     try {
-      console.log(`Intento ${intentos} - Realizando petición a: ${url}`);
+      console.log(`Intento ${intentos} - Petición a: ${url}`);
       
       // Realizamos la petición inicial para obtener los URLs de datos y metadatos
       const apiResponse = await axios.get(url, {
@@ -31,14 +31,8 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
         responseType: 'text', // Para manejar tanto JSON como texto plano
       });
 
-
-      console.log('Respuesta recibida. Estado:', apiResponse.status);
-      console.log('Tipo de contenido:', apiResponse.headers['content-type']);
-      
       // Manejamos el caso especial de AEMET que puede devolver 200 con cuerpo vacío
       if (apiResponse.status === 200 && (!apiResponse.data || (typeof apiResponse.data === 'string' && apiResponse.data.trim() === ""))) {
-        console.log('Respuesta vacía recibida con estado 200.');
-        // En lugar de simular una respuesta, lanzamos un error para manejar este caso
         throw new Error('La API devolvió una respuesta vacía. Verifique que la URL y la API key sean correctas.');
       }
       
@@ -48,40 +42,25 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
           apiResponse.headers['content-type']?.includes('text/plain') &&
           apiResponse.data.trim().startsWith('{')) {
         try {
-          console.log('Intentando parsear respuesta de texto plano como JSON...');
           responseData = JSON.parse(apiResponse.data);
-          console.log('Parseo exitoso, respuesta convertida a objeto JSON');
         } catch (parseError) {
-          console.error('Error al parsear respuesta como JSON:', parseError);
-          console.log('Contenido de la respuesta:', apiResponse.data);
+          console.error('Error al parsear respuesta como JSON');
         }
       }
       
       responseData = JSON.parse(responseData);
-      // Verificar si es un objeto y mostrarlo para depuración
-      console.log('Tipo de respuesta:', typeof responseData);
-      console.log('Contenido de la respuesta:', responseData);
-      console.log('Contenido de la respuesta:', JSON.stringify(responseData));
-      
 
       // Valores climatológicos: AEMET devuelve estado = 0 como indicador de éxito
       // El formato es: { "descripcion": "exito", "estado": 200, "datos": URL, "metadatos": URL }
       if (responseData) {
-        // Para el caso específico donde la descripción sea "Éxito" y estado sea 0
-        // esto corresponde a los valores climatológicos con periodicidad diaria
-        if (responseData.estado === 200 && responseData.descripcion === "exito") {
-          console.log("Respuesta exitosa de valores climatológicos con estado 0");
-        }
-        
         const dataUrl = responseData.datos;
-        console.log('URL de datos:', dataUrl);
         if (!dataUrl) {
           throw new Error('URL de datos no disponible en la respuesta de la API');
         }
         
         // Si datos es una URL, la descargamos
         if (typeof dataUrl === 'string' && (dataUrl.startsWith('http://') || dataUrl.startsWith('https://'))) {
-          console.log(`Descargando datos desde: ${dataUrl}`);
+          console.log(`Descargando datos desde URL`);
           try {
             const response = await axios.get(dataUrl, { 
               timeout,
@@ -91,23 +70,17 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
               responseType: 'text' // Para manejar tanto JSON como texto plano
             });
             
-            console.log('Datos obtenidos correctamente. Tipo de contenido:', response.headers['content-type']);
-            
             // Intentar parsear si es texto plano pero parece ser JSON
             let data = response.data;
             if (typeof response.data === 'string' && 
                 response.headers['content-type']?.includes('text/plain') &&
                 (response.data.trim().startsWith('[') || response.data.trim().startsWith('{'))) {
               try {
-                console.log('Intentando parsear datos de texto plano como JSON...');
                 data = JSON.parse(response.data);
-                console.log('Parseo exitoso, datos convertidos a objeto JSON');
               } catch (parseError) {
-                console.error('Error al parsear datos como JSON:', parseError);
+                console.error('Error al parsear datos como JSON');
               }
             }
-
-            console.log('Datos obtenidos:', data);
             
             // Añadir el número de intentos realizados a los datos
             if (typeof data === 'object' && data !== null) {
@@ -127,21 +100,18 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
             
             return data;
           } catch (dataError) {
-            console.error('Error al obtener los datos:', dataError);
+            console.error('Error al obtener los datos');
             if (axios.isAxiosError(dataError) && dataError.response) {
-              console.error('Detalles de error en datos:', dataError.response.status, JSON.stringify(dataError.response.data));
+              console.error(`Error: ${dataError.response.status}`);
             }
             throw new Error(`Error al acceder a la URL de datos: ${dataError instanceof Error ? dataError.message : 'Error desconocido'}`);
           }
         } else {
           // Si datos no es una URL sino directamente la información
-          console.log('El campo "datos" contiene directamente la información, no una URL');
-          // Añadir el número de intentos al objeto de respuesta
           responseData.intentos = intentos;
           return responseData; // Devolver el objeto completo con { "descripcion": "Éxito", "estado": 0, "datos": ..., "metadatos": ..., "intentos": ... }
         }
       } else {
-        console.error('Error en la respuesta:', JSON.stringify(responseData));
         throw new Error(`Error en la respuesta de la API: ${responseData?.descripcion || 'Sin descripción'} (Estado: ${responseData?.estado || apiResponse.status})`);
       }
     } catch (error) {
@@ -152,7 +122,7 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
       const isSocketHangUp = errorMessage.includes('socket hang up');
       
       if (isSocketHangUp && intentos < MAX_RETRIES) {
-        console.log(`Error "socket hang up" detectado. Reintentando (${intentos}/${MAX_RETRIES})...`);
+        console.log(`Error "socket hang up". Reintentando (${intentos}/${MAX_RETRIES})...`);
         // Esperar un tiempo antes de reintentar (tiempo exponencial)
         const retryDelay = Math.min(1000 * Math.pow(2, intentos - 1), 10000);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -164,8 +134,6 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
         console.error('Error de Axios:', error.message);
         
         if (error.response) {
-          console.error('Respuesta de error:', error.response.status, JSON.stringify(error.response.data));
-          
           // Verificar si la respuesta es un HTML (error de Tomcat)
           const contentType = error.response.headers['content-type'];
           if (contentType && contentType.includes('text/html')) {
@@ -176,17 +144,14 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
               throw new Error(`Error del servidor (${error.response.status}). Intente más tarde.`);
             }
           } else {
-            throw new Error(`Error en la petición a la API: ${error.response.status} - ${JSON.stringify(error.response.data) || 'Sin datos'}`);
+            throw new Error(`Error en la petición a la API: ${error.response.status}`);
           }
         } else if (error.request) {
-          console.error('No se recibió respuesta');
           throw new Error(`No se recibió respuesta de la API: ${error.message}`);
         } else {
-          console.error('Error al configurar la petición');
           throw new Error(`Error al configurar la petición a la API: ${error.message}`);
         }
       }
-      console.error('Error desconocido:', error);
       throw lastError;
     }
   }
