@@ -74,6 +74,10 @@ export type SkyState = {
  * Parámetros para solicitar valores climatológicos diarios
  */
 export interface ClimateValuesParams {
+  /**
+   * Identificador de la estación meteorológica
+   */
+  stationId: string;
   
   /**
    * Fecha de inicio para la consulta (formato: AAAA-MM-DD)

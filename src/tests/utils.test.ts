@@ -16,12 +16,12 @@ describe('Utilidades', () => {
 
   describe('formatDate', () => {
     it('debe formatear la fecha correctamente como YYYY-MM-DD', () => {
-      const date = new Date(2023, 0, 15); // 15 de enero de 2023
+      const date = new Date(Date.UTC(2023, 0, 15)); // 15 de enero de 2023
       expect(formatDate(date)).toBe('2023-01-15');
     });
 
     it('debe manejar correctamente los meses y días con un solo dígito', () => {
-      const date = new Date(2023, 0, 1); // 1 de enero de 2023
+      const date = new Date(Date.UTC(2023, 0, 1)); // 1 de enero de 2023
       expect(formatDate(date)).toBe('2023-01-01');
     });
   });
@@ -34,12 +34,12 @@ describe('Utilidades', () => {
     ];
 
     it('debe devolver el pronóstico correcto para una fecha específica', () => {
-      const result = getDayForecast(mockForecast, new Date(2023, 0, 16));
+      const result = getDayForecast(mockForecast, new Date(Date.UTC(2023, 0, 16)));
       expect(result).toEqual({ fecha: '2023-01-16', temperatura: { maxima: 22, minima: 12 } });
     });
 
     it('debe devolver undefined si no hay pronóstico para la fecha', () => {
-      const result = getDayForecast(mockForecast, new Date(2023, 0, 20));
+      const result = getDayForecast(mockForecast, new Date(Date.UTC(2023, 0, 20)));
       expect(result).toBeUndefined();
     });
 
@@ -53,8 +53,7 @@ describe('Utilidades', () => {
     });
 
     it('debe calcular la fecha correctamente a partir de un offset numérico', () => {
-      // Usamos una fecha fija para las pruebas
-      const fixedDate = new Date('2023-01-15T00:00:00Z');
+      const fixedDate = new Date(Date.UTC(2023, 0, 15));
       jest.useFakeTimers().setSystemTime(fixedDate);
 
       try {
@@ -67,7 +66,7 @@ describe('Utilidades', () => {
         const resultNext2 = getDayForecast(mockForecast, 2);
         expect(resultNext2).toEqual({ fecha: '2023-01-17', temperatura: { maxima: 18, minima: 8 } });
       } finally {
-        jest.useRealTimers(); // Restaurar timers reales
+        jest.useRealTimers();
       }
     });
   });

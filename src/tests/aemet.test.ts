@@ -8,6 +8,7 @@ jest.mock('../lib/utils', () => ({
   ...jest.requireActual('../lib/utils'),
   fetchAemetData: jest.fn(),
   getSkyStateDescription: jest.fn((code) => `Descripción para ${code}`),
+  getDayForecast: jest.fn()
 }));
 
 describe('Cliente Aemet', () => {
@@ -77,6 +78,14 @@ describe('Cliente Aemet', () => {
     };
 
     beforeEach(() => {
+      // Configuramos el mock de getDayForecast para devolver los datos correctos
+      (utils.getDayForecast as jest.Mock).mockImplementation((forecast, offset) => {
+        if (offset === 0) return mockForecastData.prediccion.dia[0];
+        if (offset === 1) return mockForecastData.prediccion.dia[1];
+        if (offset === 2) return mockForecastData.prediccion.dia[2];
+        return null;
+      });
+      
       (utils.fetchAemetData as jest.Mock).mockResolvedValue(mockForecastData);
     });
 
@@ -115,7 +124,8 @@ describe('Cliente Aemet', () => {
             min: 6,
             max: 16
           }
-        }
+        },
+        intentos: undefined
       });
     });
 
@@ -159,6 +169,14 @@ describe('Cliente Aemet', () => {
     };
 
     beforeEach(() => {
+      // Configuramos el mock de getDayForecast para devolver los datos correctos
+      (utils.getDayForecast as jest.Mock).mockImplementation((forecast, offset) => {
+        if (offset === 0) return mockForecastData.prediccion.dia[0];
+        if (offset === 1) return mockForecastData.prediccion.dia[1];
+        if (offset === 2) return mockForecastData.prediccion.dia[2];
+        return null;
+      });
+      
       (utils.fetchAemetData as jest.Mock).mockResolvedValue(mockForecastData);
     });
 
@@ -178,7 +196,8 @@ describe('Cliente Aemet', () => {
         today: expect.any(Object),
         tomorrow: expect.any(Object),
         next2: expect.any(Object),
-        forecast: mockForecastData.prediccion.dia
+        forecast: mockForecastData.prediccion.dia,
+        intentos: undefined
       });
     });
 

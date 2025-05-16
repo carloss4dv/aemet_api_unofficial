@@ -204,9 +204,9 @@ export class Aemet {
 
   /**
    * Método privado para extraer la predicción de un día específico
-   * @param data - Datos de la predicción completa
-   * @param dayOffset - Desplazamiento del día (0 para hoy, 1 para mañana, etc.)
-   * @returns Predicción simplificada para el día
+   * @param data - Datos completos de la predicción
+   * @param dayOffset - Offset del día (0: hoy, 1: mañana, 2: pasado mañana)
+   * @returns Predicción simplificada para el día especificado
    */
   private extractDayForecast(data: any, dayOffset: number): SimpleForecast {
     try {
@@ -225,20 +225,30 @@ export class Aemet {
       const skyState = this.getPredominantSkyState(dayData.estadoCielo);
       
       // Obtenemos las temperaturas mínima y máxima
-      let minTemp = null;
-      let maxTemp = null;
+      let minTemp = 0;
+      let maxTemp = 0;
 
       if (dayData.temperatura) {
-        minTemp = dayData.temperatura.minima;
-        maxTemp = dayData.temperatura.maxima;
+        // Aseguramos que los valores sean números
+        minTemp = typeof dayData.temperatura.minima === 'string' 
+          ? parseFloat(dayData.temperatura.minima) 
+          : (typeof dayData.temperatura.minima === 'number' 
+              ? dayData.temperatura.minima 
+              : 0);
+        
+        maxTemp = typeof dayData.temperatura.maxima === 'string' 
+          ? parseFloat(dayData.temperatura.maxima) 
+          : (typeof dayData.temperatura.maxima === 'number' 
+              ? dayData.temperatura.maxima 
+              : 0);
       }
 
       return {
         value: skyState,
         descripcion: getSkyStateDescription(skyState),
         tmp: {
-          min: minTemp !== null ? Number.parseInt(minTemp, 10) : 0,
-          max: maxTemp !== null ? Number.parseInt(maxTemp, 10) : 0
+          min: minTemp,
+          max: maxTemp
         }
       };
     } catch (error) {
@@ -359,12 +369,17 @@ export class Aemet {
     }
     
     try {
+      // Para el caso de los tests donde ya vienen como números decimales
+      if (coord.includes('.')) {
+        return parseFloat(coord);
+      }
+      
       // Formato esperado: "GGMMSS[N|S|E|W]" (grados, minutos, segundos, dirección)
       const direction = coord.slice(-1);
       const numeric = coord.slice(0, -1);
       
       if (numeric.length !== 6) {
-        return 0;
+        return parseFloat(coord) || 0;
       }
       
       const degrees = parseInt(numeric.slice(0, 2), 10);
@@ -1040,6 +1055,81 @@ export class Aemet {
     } catch (error) {
       console.error('Error al obtener el periodo más cercano:', error);
       throw new Error('Error en la API de AEMET');
+    }
+  }
+
+  /**
+   * Obtener un resumen climatológico para una estación y período específicos
+   * @param params - Parámetros para obtener valores climatológicos
+   * @returns Resumen climatológico del período
+   */
+  async getClimateSummary(params: ClimateValuesParams): Promise<any> {
+    try {
+      // Primero obtenemos los valores climatológicos
+      const climateData = await this.getClimateValues(params);
+      
+      // Si no hay datos, lanzamos un error
+      if (!climateData.values || climateData.values.length === 0) {
+        throw new Error('No hay datos climatológicos disponibles para el período especificado');
+      }
+      
+      // Extraemos los valores para calcular estadísticas
+      const temperatures = climateData.values.map(v => v.tm).filter(v => v !== undefined) as number[];
+      const maxTemperatures = climateData.values.map(v => v.tmax).filter(v => v !== undefined) as number[];
+      const minTemperatures = climateData.values.map(v => v.tmin).filter(v => v !== undefined) as number[];
+      const precipitations = climateData.values.map(v => v.prec).filter(v => v !== undefined) as number[];
+      const windSpeeds = climateData.values.map(v => v.velmedia).filter(v => v !== undefined) as number[];
+      const windGusts = climateData.values.map(v => v.racha).filter(v => v !== undefined) as number[];
+      
+      // Calculamos las estadísticas
+      const avgTemperature = this.calculateAverage(temperatures);
+      const maxTemp = Math.max(...maxTemperatures);
+      const maxTempDay = climateData.values.find(v => v.tmax === maxTemp);
+      const minTemp = Math.min(...minTemperatures);
+      const minTempDay = climateData.values.find(v => v.tmin === minTemp);
+      const totalPrecipitation = this.calculateSum(precipitations);
+      const daysWithPrecipitation = precipitations.filter(p => p > 0).length;
+      const avgWindSpeed = this.calculateAverage(windSpeeds);
+      const maxWindSpeed = Math.max(...windGusts);
+      const maxWindDay = climateData.values.find(v => v.racha === maxWindSpeed);
+      
+      return {
+        station: climateData.station,
+        period: {
+          startDate: params.startDate,
+          endDate: params.endDate,
+          totalDays: climateData.values.length
+        },
+        temperature: {
+          avg: avgTemperature,
+          max: {
+            value: maxTemp,
+            date: maxTempDay?.fecha
+          },
+          min: {
+            value: minTemp,
+            date: minTempDay?.fecha
+          }
+        },
+        precipitation: {
+          total: totalPrecipitation,
+          daysWithPrecipitation,
+          avg: totalPrecipitation / climateData.values.length
+        },
+        wind: {
+          avgSpeed: avgWindSpeed,
+          maxSpeed: {
+            value: maxWindSpeed,
+            date: maxWindDay?.fecha
+          }
+        },
+        intentos: climateData.intentos
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Error al generar resumen climatológico: ${error.message}`);
+      }
+      throw new Error('Error desconocido al generar resumen climatológico');
     }
   }
 }
