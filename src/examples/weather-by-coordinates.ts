@@ -6,8 +6,8 @@ async function main() {
 
   try {
     // Ejemplo con Madrid (coordenadas aproximadas del centro)
-    const latitud = 40.4168;
-    const longitud = -3.7038;
+    const latitud = 41.54709554565112;
+    const longitud = -0.1297398615341678;
 
     console.log('Obteniendo datos meteorológicos para:');
     console.log(`- Coordenadas: ${latitud}, ${longitud}`);
@@ -40,6 +40,12 @@ async function main() {
     console.log(`- Viento: ${datos.weatherData.viento.velocidad}m/s dirección ${datos.weatherData.viento.direccion}`);
     if (datos.weatherData.viento.rachaMax) {
       console.log(`- Racha máxima: ${datos.weatherData.viento.rachaMax}m/s`);
+    }
+    console.log('----------------------------------------');
+
+    // Mostrar el número de intentos realizados
+    if (datos.intentos !== undefined) {
+      console.log(`Petición completada en ${datos.intentos} ${datos.intentos === 1 ? 'intento' : 'intentos'}`);
     }
 
   } catch (error) {

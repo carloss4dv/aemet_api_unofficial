@@ -23,6 +23,10 @@ export interface AemetResponse {
   estado: number;
   datos: string;
   metadatos: string;
+  /**
+   * Número de intentos realizados para obtener la respuesta
+   */
+  intentos?: number;
 }
 
 /**
@@ -46,6 +50,10 @@ export interface SimpleForecastResponse {
   today: SimpleForecast;
   tomorrow: SimpleForecast;
   next2: SimpleForecast;
+  /**
+   * Número de intentos realizados para obtener la respuesta
+   */
+  intentos?: number;
 }
 
 /**
@@ -230,6 +238,11 @@ export interface ClimateValuesResponse {
    * Datos crudos de la respuesta (para exploración)
    */
   rawData?: any;
+
+  /**
+   * Número de intentos realizados para obtener la respuesta
+   */
+  intentos?: number;
 }
 
 /**
@@ -327,4 +340,9 @@ export interface WeatherByCoordinatesResponse {
    * Distancia en kilómetros al municipio más cercano
    */
   distancia: number;
+
+  /**
+   * Número de intentos realizados para obtener la respuesta
+   */
+  intentos?: number;
 } 

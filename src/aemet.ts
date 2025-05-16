@@ -73,12 +73,16 @@ export class Aemet {
       const tomorrow = this.extractDayForecast(data, 1);
       const next2 = this.extractDayForecast(data, 2);
       
+      // Extraemos el número de intentos si existe
+      const intentos = data?.intentos;
+      
       return {
         name,
         province,
         today,
         tomorrow,
-        next2
+        next2,
+        intentos
       };
     } catch (error) {
       if (error instanceof Error) {
@@ -114,13 +118,17 @@ export class Aemet {
       // Incluimos el forecast completo original
       const forecast = data?.prediccion?.dia || [];
       
+      // Extraemos el número de intentos si existe
+      const intentos = data?.intentos;
+      
       return {
         name,
         province,
         today,
         tomorrow,
         next2,
-        forecast
+        forecast,
+        intentos
       };
     } catch (error) {
       if (error instanceof Error) {
@@ -479,10 +487,14 @@ export class Aemet {
           }
         }
         
+        // Extraemos el número de intentos si existe
+        const intentos = data?.intentos || (Array.isArray(data) && data[0]?.intentos);
+        
         return {
           station,
           values,
-          rawData: municipioData
+          rawData: municipioData,
+          intentos
         };
       } catch (error) {
         console.error('Error al obtener la predicción horaria:', error);
@@ -579,9 +591,13 @@ export class Aemet {
         nieve: item.nieve !== undefined ? parseInt(item.nieve, 10) : undefined
       }));
       
+      // Extraemos el número de intentos si existe
+      const intentos = data[0]?.intentos;
+      
       return {
         station,
-        values
+        values,
+        intentos
       };
     } catch (error) {
       if (error instanceof Error) {
@@ -778,12 +794,16 @@ export class Aemet {
       // Calculamos la distancia si no se proporcionó un código de municipio
       const distancia = municipalityCode ? 0 : await this.calcularDistanciaMunicipio(latitud, longitud, codigoMunicipio);
 
+      // Extraemos el número de intentos si existe
+      const intentos = data?.intentos || (Array.isArray(data) && data[0]?.intentos);
+
       return {
         municipalityCode: codigoMunicipio,
         name: municipioData.nombre || '',
         province: municipioData.provincia || '',
         weatherData: periodoMasCercano,
-        distancia
+        distancia,
+        intentos
       };
     } catch (error) {
       console.error('Error en getWeatherByCoordinates:', error);
