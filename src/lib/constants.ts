@@ -30,6 +30,8 @@ export const ENDPOINTS = {
   CLIMATE_STATIONS: '/valores/climatologicos/inventarioestaciones/todasestaciones/',
   // Predicción horaria por municipio
   FORECAST_MUNICIPALITY_HOURLY: '/prediccion/especifica/municipio/horaria/',
+  // Avisos meteorológicos en formato CAP para toda el área española
+  ALERTS_CAP_AREA_ESP: '/avisos_cap/ultimoelaborado/area/esp',
 };
 
 // Códigos de estado del cielo y sus descripciones

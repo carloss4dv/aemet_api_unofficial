@@ -11,7 +11,9 @@ import {
   WeatherStation,
   ClimateValuesResponse,
   ClimateValue,
-  WeatherByCoordinatesResponse
+  WeatherByCoordinatesResponse,
+  AlertsGeoJSON,
+  AlertFeature
 } from './lib/types';
 import { 
   DEFAULT_BASE_URL, 
@@ -22,8 +24,14 @@ import {
 import { 
   fetchAemetData, 
   getSkyStateDescription, 
-  getDayForecast
+  getDayForecast,
+  fetchAemetBinaryFile
 } from './lib/utils';
+import * as tar from 'tar';
+import * as fs from 'fs-extra';
+import * as os from 'os';
+import * as path from 'path';
+import * as xml2js from 'xml2js';
 
 /**
  * Cliente para la API de AEMET (Agencia Estatal de Meteorología)
@@ -1132,10 +1140,287 @@ export class Aemet {
       throw new Error('Error desconocido al generar resumen climatológico');
     }
   }
+
+  /**
+   * Obtener las alertas meteorológicas en formato GeoJSON
+   * @returns Colección de alertas en formato GeoJSON
+   */
+  async getAlertsGeoJSON(): Promise<AlertsGeoJSON> {
+    try {
+      // Crear un directorio temporal para extraer los archivos
+      const tempDir = path.join(os.tmpdir(), `aemet-alerts-${Date.now()}`);
+      const tarFilePath = path.join(tempDir, 'alertas.tar');
+      
+      await fs.ensureDir(tempDir);
+      
+      // 1. Descargar el archivo .tar desde el endpoint de AEMET usando la nueva función específica para archivos binarios
+      console.log('Descargando archivo de alertas...');
+      const url = `${this.baseUrl}${ENDPOINTS.ALERTS_CAP_AREA_ESP}`;
+      
+      // Usar el nuevo método para descargar archivos binarios con un timeout mayor (30 segundos)
+      const { data: tarBuffer, intentos } = await fetchAemetBinaryFile(url, this.apiKey, 30000);
+      
+      // Guardar el archivo descargado
+      await fs.writeFile(tarFilePath, tarBuffer);
+      console.log(`Archivo .tar guardado en ${tarFilePath}`);
+      
+      // 2. Extraer los archivos XML del archivo .tar
+      console.log('Extrayendo archivos XML...');
+      try {
+        await tar.extract({
+          file: tarFilePath,
+          cwd: tempDir,
+          onentry: (entry) => {
+            console.log(`Extrayendo archivo: ${entry.path}`);
+          }
+        });
+      } catch (extractError) {
+        console.error('Error al extraer el archivo tar:', extractError);
+        // A veces el archivo tar puede tener un formato ligeramente diferente
+        // Intentamos leer el archivo como raw buffer y escribir su contenido
+        console.log('Intentando método alternativo de extracción...');
+        const rawContent = await fs.readFile(tarFilePath);
+        // Buscar el inicio de la cabecera XML
+        const xmlStartIndex = rawContent.indexOf(Buffer.from('<?xml'));
+        if (xmlStartIndex >= 0) {
+          const xmlContent = rawContent.slice(xmlStartIndex);
+          await fs.writeFile(path.join(tempDir, 'alert.cap'), xmlContent);
+          console.log('Se ha extraído el contenido XML directamente');
+        } else {
+          console.log('No se encontró contenido XML en el archivo');
+        }
+      }
+      
+      // 3. Leer los archivos extraídos
+      const allFiles = await fs.readdir(tempDir);
+      console.log('Contenido del directorio de extracción:');
+      allFiles.forEach(file => console.log(` - ${file}`));
+
+      // Buscar archivos CAP, XML o cualquier otro archivo que pueda contener datos de alertas
+      const capFiles = allFiles.filter(file => 
+        file.endsWith('.cap') || 
+        file.endsWith('.xml') || 
+        file.includes('CAP')
+      );
+      
+      if (capFiles.length === 0) {
+        console.log('No se encontraron archivos CAP. Intentando buscar archivos con extensiones diferentes...');
+        
+        // Si no encontramos archivos CAP, intentar leer el contenido de todos los archivos
+        // excluyendo el original tar para ver si alguno contiene datos XML
+        for (const file of allFiles.filter(f => f !== 'alertas.tar')) {
+          try {
+            const content = await fs.readFile(path.join(tempDir, file), 'utf-8');
+            // Verificar si el contenido parece ser XML
+            if (content.trim().startsWith('<?xml')) {
+              console.log(`El archivo ${file} contiene XML`);
+              capFiles.push(file);
+            }
+          } catch (error) {
+            console.log(`No se pudo leer el archivo ${file} como texto`);
+          }
+        }
+      }
+      
+      console.log(`Se encontraron ${capFiles.length} archivos CAP/XML`);
+      
+      // 4. Crear la colección GeoJSON
+      const features: AlertFeature[] = [];
+      const parser = new xml2js.Parser({ explicitArray: false });
+      
+      // 5. Procesar cada archivo XML
+      for (const file of capFiles) {
+        try {
+          console.log(`Procesando archivo: ${file}`);
+          const fileContent = await fs.readFile(path.join(tempDir, file));
+          
+          // Intentar diferentes codificaciones
+          let xmlContent: string;
+          try {
+            xmlContent = fileContent.toString('utf-8');
+          } catch (e) {
+            // Si falla UTF-8, intentar con ISO-8859-15
+            xmlContent = fileContent.toString('latin1');
+          }
+          
+          // Verificar si parece un XML válido
+          if (!xmlContent.trim().startsWith('<?xml')) {
+            console.log(`El archivo ${file} no parece ser un XML válido`);
+            continue;
+          }
+          
+          console.log(`Parseando XML del archivo ${file}...`);
+          const result = await parser.parseStringPromise(xmlContent);
+          console.log('Estructura del XML parseado:', JSON.stringify(result, null, 2).substring(0, 500) + '...');
+          
+          // Verifica si existe la estructura necesaria
+          if (!result.alert || !result.alert.info) {
+            console.log(`El archivo ${file} no contiene la estructura de alerta esperada`);
+            continue;
+          }
+          
+          const infoArray = Array.isArray(result.alert.info) ? result.alert.info : [result.alert.info];
+          
+          // Filtrar solo la información en español (language = es-ES)
+          for (const infoItem of infoArray) {
+            // Verificar si el idioma es español
+            if (!infoItem.language || infoItem.language !== 'es-ES') {
+              console.log('Saltando alerta en idioma no español');
+              continue;
+            }
+            
+            // Saltar si no hay área definida
+            if (!infoItem.area || !infoItem.area.polygon) {
+              console.log('Alerta sin información de área o polígono');
+              continue;
+            }
+            
+            // Extraer el nivel de alerta
+            let nivel = 'desconocido';
+            let fenomeno = '';
+            let probabilidad = '';
+            
+            if (infoItem.parameter) {
+              const parameters = Array.isArray(infoItem.parameter) ? infoItem.parameter : [infoItem.parameter];
+              
+              for (const param of parameters) {
+                // Buscar el nivel de alerta
+                if (param.valueName === 'AEMET-Meteoalerta nivel') {
+                  nivel = param.value?.toLowerCase() || 'desconocido';
+                }
+                
+                // Buscar el tipo de fenómeno y limpiarlo
+                if (param.valueName === 'AEMET-Meteoalerta parametro') {
+                  // Obtener la descripción del fenómeno (después del ';')
+                  if (param.value && param.value.includes(';')) {
+                    const partes = param.value.split(';');
+                    if (partes.length >= 2) {
+                      // Tomar solo la descripción (segunda parte)
+                      fenomeno = partes[1].trim();
+                      
+                      // Si hay un valor tras la segunda parte (separado por ';'), lo añadimos
+                      if (partes.length >= 3 && partes[2].trim()) {
+                        fenomeno += ': ' + partes[2].trim();
+                      }
+                    } else {
+                      fenomeno = param.value;
+                    }
+                  } else {
+                    fenomeno = param.value || '';
+                  }
+                }
+                
+                // Buscar la probabilidad
+                if (param.valueName === 'AEMET-Meteoalerta probabilidad') {
+                  probabilidad = param.value || '';
+                }
+              }
+            }
+            
+            console.log(`Encontrada alerta de nivel: ${nivel}, fenómeno: ${fenomeno}`);
+            console.log(`Área afectada: ${infoItem.area.areaDesc || 'No especificada'}`);
+            
+            // Extraer el polígono (pueden ser varios)
+            const polygons = Array.isArray(infoItem.area.polygon) 
+              ? infoItem.area.polygon 
+              : [infoItem.area.polygon];
+            
+            for (const polygonStr of polygons) {
+              try {
+                // Convertir el polígono al formato GeoJSON [longitud, latitud]
+                const coordinates = polygonStr.split(' ').map((point: string) => {
+                  const [latStr, lngStr] = point.split(',');
+                  const lat = parseFloat(latStr);
+                  const lng = parseFloat(lngStr);
+                  return [lng, lat]; // GeoJSON usa [longitud, latitud]
+                });
+                
+                // Asegurarse de que el polígono está cerrado
+                if (coordinates.length > 0 && 
+                    (coordinates[0][0] !== coordinates[coordinates.length - 1][0] || 
+                     coordinates[0][1] !== coordinates[coordinates.length - 1][1])) {
+                  coordinates.push([coordinates[0][0], coordinates[0][1]]);
+                }
+                
+                // Crear la feature GeoJSON
+                const feature: AlertFeature = {
+                  type: 'Feature',
+                  geometry: {
+                    type: 'Polygon',
+                    coordinates: [coordinates]
+                  },
+                  properties: {
+                    nivel,
+                    fenomeno,
+                    areaDesc: infoItem.area.areaDesc || '',
+                    descripcion: infoItem.description || infoItem.headline || '',
+                    probabilidad,
+                    onset: infoItem.onset || '',
+                    expires: infoItem.expires || '',
+                    effective: infoItem.effective || ''
+                  }
+                };
+                
+                // Añadimos información adicional si está disponible
+                if (infoItem.severity) {
+                  feature.properties.severity = infoItem.severity;
+                }
+                
+                if (infoItem.certainty) {
+                  feature.properties.certainty = infoItem.certainty;
+                }
+                
+                if (infoItem.urgency) {
+                  feature.properties.urgency = infoItem.urgency;
+                }
+                
+                if (infoItem.instruction) {
+                  feature.properties.instruction = infoItem.instruction;
+                }
+                
+                features.push(feature);
+                console.log(`Añadido polígono con ${coordinates.length} puntos`);
+              } catch (polyError) {
+                console.error(`Error al procesar el polígono: ${polyError}`);
+              }
+            }
+          }
+        } catch (fileError) {
+          console.error(`Error al procesar el archivo ${file}: ${fileError}`);
+        }
+      }
+      
+      // 6. Si no se encontraron alertas y hay un archivo tar, intentar descomprimir con otras herramientas
+      if (features.length === 0 && allFiles.includes('alertas.tar')) {
+        console.log('No se encontraron alertas. El servidor posiblemente devolvió un archivo vacío o no hay alertas activas actualmente.');
+      }
+      
+      // 7. Limpiar archivos temporales
+      try {
+        await fs.remove(tempDir);
+      } catch (cleanupError) {
+        console.warn(`Error al limpiar archivos temporales: ${cleanupError}`);
+      }
+      
+      // 8. Devolver la FeatureCollection
+      return {
+        type: 'FeatureCollection',
+        features,
+        intentos
+      };
+    } catch (error) {
+      console.error('Error al obtener alertas GeoJSON:', error);
+      
+      if (error instanceof Error) {
+        throw new Error(`Error al obtener alertas meteorológicas: ${error.message}`);
+      }
+      throw new Error('Error desconocido al obtener alertas meteorológicas');
+    }
+  }
 }
 
 // También exportamos el tipo AemetOptions para uso externo
-export { AemetOptions }; 
+export { AemetOptions, AlertsGeoJSON }; 
 
 /**
  * Ejemplo de uso del nuevo endpoint de predicción horaria por municipio
@@ -1183,5 +1468,55 @@ export { AemetOptions };
  * // Ejecutar ejemplos
  * ejemploPrediccionHoraria();
  * ejemploPrediccionPorCoordenadas();
+ * ```
+ */ 
+
+/**
+ * Ejemplo de uso del nuevo método para obtener alertas en formato GeoJSON
+ * 
+ * ```typescript
+ * import { Aemet, AlertsGeoJSON } from './aemet';
+ * import * as fs from 'fs';
+ * 
+ * // Inicializar cliente con tu API key
+ * const aemet = new Aemet('TU_API_KEY');
+ * 
+ * // Obtener alertas meteorológicas en formato GeoJSON
+ * async function obtenerAlertasGeoJSON() {
+ *   try {
+ *     const alertas: AlertsGeoJSON = await aemet.getAlertsGeoJSON();
+ *     
+ *     console.log(`Se encontraron ${alertas.features.length} alertas meteorológicas`);
+ *     
+ *     // Guardar el resultado en un archivo para visualizarlo en un visor GeoJSON
+ *     fs.writeFileSync('alertas.geojson', JSON.stringify(alertas, null, 2));
+ *     
+ *     // Mostrar información sobre las alertas
+ *     alertas.features.forEach((feature, index) => {
+ *       console.log(`Alerta ${index + 1}:`);
+ *       console.log(`  Nivel: ${feature.properties.nivel}`);
+ *       console.log(`  Fenómeno: ${feature.properties.fenomeno}`);
+ *       console.log(`  Descripción: ${feature.properties.descripcion}`);
+ *       console.log(`  Probabilidad: ${feature.properties.probabilidad}`);
+ *       console.log(`  Inicio: ${feature.properties.onset}`);
+ *       console.log(`  Fin: ${feature.properties.expires}`);
+ *       console.log(`  Número de puntos en el polígono: ${feature.geometry.coordinates[0].length}`);
+ *       console.log('');
+ *     });
+ *     
+ *     // Filtrar alertas de nivel naranja o rojo
+ *     const alertasImportantes = alertas.features.filter(
+ *       feature => ['naranja', 'rojo'].includes(feature.properties.nivel)
+ *     );
+ *     
+ *     console.log(`Hay ${alertasImportantes.length} alertas de nivel naranja o rojo`);
+ *     
+ *   } catch (error) {
+ *     console.error('Error:', error);
+ *   }
+ * }
+ * 
+ * // Ejecutar ejemplo
+ * obtenerAlertasGeoJSON();
  * ```
  */ 

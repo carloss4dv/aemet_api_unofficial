@@ -349,4 +349,88 @@ export interface WeatherByCoordinatesResponse {
    * Número de intentos realizados para obtener la respuesta
    */
   intentos?: number;
+}
+
+/**
+ * Coordenada [longitud, latitud] para los polígonos GeoJSON
+ */
+export type GeoJSONCoordinate = [number, number];
+
+/**
+ * Polígono GeoJSON para una alerta meteorológica
+ */
+export interface GeoJSONPolygon {
+  type: "Polygon";
+  coordinates: GeoJSONCoordinate[][];
+}
+
+/**
+ * Propiedades de una alerta meteorológica en GeoJSON
+ */
+export interface AlertProperties {
+  /**
+   * Nivel de alerta (amarillo, naranja, rojo)
+   */
+  nivel: string;
+  
+  /**
+   * Tipo de fenómeno meteorológico
+   */
+  fenomeno: string;
+  
+  /**
+   * Descripción del área afectada
+   */
+  areaDesc?: string;
+  
+  /**
+   * Descripción del fenómeno
+   */
+  descripcion?: string;
+  
+  /**
+   * Probabilidad de ocurrencia
+   */
+  probabilidad?: string;
+  
+  /**
+   * Fecha y hora de inicio de la alerta
+   */
+  onset?: string;
+  
+  /**
+   * Fecha y hora de fin de la alerta
+   */
+  expires?: string;
+
+  /**
+   * Fecha y hora en que la alerta entra en vigor
+   */
+  effective?: string;
+
+  /**
+   * Otros metadatos adicionales
+   */
+  [key: string]: any;
+}
+
+/**
+ * Feature GeoJSON para una alerta meteorológica
+ */
+export interface AlertFeature {
+  type: "Feature";
+  geometry: GeoJSONPolygon;
+  properties: AlertProperties;
+}
+
+/**
+ * FeatureCollection GeoJSON para todas las alertas meteorológicas
+ */
+export interface AlertsGeoJSON {
+  type: "FeatureCollection";
+  features: AlertFeature[];
+  /**
+   * Número de intentos realizados para obtener la respuesta
+   */
+  intentos?: number;
 } 
