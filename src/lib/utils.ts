@@ -19,7 +19,10 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
 
   while (intentos <= MAX_RETRIES) {
     try {
-      console.log(`Intento ${intentos} - Petición a: ${url}`);
+      // Log simplificado de la petición inicial
+      if (intentos > 1) {
+        console.log(`Petición a AEMET (Intento ${intentos}/${MAX_RETRIES})`);
+      }
       
       // Realizamos la petición inicial para obtener los URLs de datos y metadatos
       const apiResponse = await axios.get(url, {
@@ -44,7 +47,7 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
         try {
           responseData = JSON.parse(apiResponse.data);
         } catch (parseError) {
-          console.error('Error al parsear respuesta como JSON');
+          console.error('Error: No se pudo parsear la respuesta como JSON');
         }
       }
       
@@ -60,7 +63,11 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
         
         // Si datos es una URL, la descargamos
         if (typeof dataUrl === 'string' && (dataUrl.startsWith('http://') || dataUrl.startsWith('https://'))) {
-          console.log(`Descargando datos desde URL`);
+          // Log simplificado para descarga de datos
+          if (intentos === 1) {
+            console.log(`Obteniendo datos AEMET...`);
+          }
+          
           try {
             const response = await axios.get(dataUrl, { 
               timeout,
@@ -78,7 +85,7 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
               try {
                 data = JSON.parse(response.data);
               } catch (parseError) {
-                console.error('Error al parsear datos como JSON');
+                console.error('Error: No se pudo parsear los datos como JSON');
               }
             }
             
@@ -100,9 +107,9 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
             
             return data;
           } catch (dataError) {
-            console.error('Error al obtener los datos');
+            console.error('Error: No se pudieron obtener los datos de AEMET');
             if (axios.isAxiosError(dataError) && dataError.response) {
-              console.error(`Error: ${dataError.response.status}`);
+              console.error(`Error ${dataError.response.status}`);
             }
             throw new Error(`Error al acceder a la URL de datos: ${dataError instanceof Error ? dataError.message : 'Error desconocido'}`);
           }
@@ -122,7 +129,7 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
       const isSocketHangUp = errorMessage.includes('socket hang up');
       
       if (isSocketHangUp && intentos < MAX_RETRIES) {
-        console.log(`Error "socket hang up". Reintentando (${intentos}/${MAX_RETRIES})...`);
+        console.log(`Error de conexión. Reintentando (${intentos}/${MAX_RETRIES})...`);
         // Esperar un tiempo antes de reintentar (tiempo exponencial)
         const retryDelay = Math.min(1000 * Math.pow(2, intentos - 1), 10000);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -131,7 +138,7 @@ export async function fetchAemetData(url: string, apiKey: string, timeout: numbe
       }
       
       if (axios.isAxiosError(error)) {
-        console.error('Error de Axios:', error.message);
+        console.error('Error en la petición:', error.message);
         
         if (error.response) {
           // Verificar si la respuesta es un HTML (error de Tomcat)
@@ -219,7 +226,11 @@ export async function fetchAemetBinaryFile(url: string, apiKey: string, timeout:
 
   while (intentos <= MAX_RETRIES) {
     try {
-      console.log(`Intento ${intentos} - Petición a: ${url}`);
+      if (intentos > 1) {
+        console.log(`Descarga de archivo binario (Intento ${intentos}/${MAX_RETRIES})`);
+      } else {
+        console.log(`Descargando archivo de alertas...`);
+      }
       
       // Realizamos la petición inicial para obtener la URL de datos
       const apiResponse = await axios.get(url, {
@@ -237,7 +248,6 @@ export async function fetchAemetBinaryFile(url: string, apiKey: string, timeout:
       }
       
       const dataUrl = apiResponse.data.datos;
-      console.log(`Descargando archivo binario desde URL: ${dataUrl}`);
       
       // Descargar el archivo binario
       try {
@@ -252,8 +262,8 @@ export async function fetchAemetBinaryFile(url: string, apiKey: string, timeout:
           throw new Error('Se recibió un archivo vacío');
         }
         
-        const contentType = response.headers['content-type'];
-        console.log(`Archivo descargado correctamente. Content-Type: ${contentType}, Tamaño: ${response.data.byteLength} bytes`);
+        // Log simplificado
+        console.log(`Archivo descargado (${response.data.byteLength} bytes)`);
         
         // Devolver los datos binarios como Buffer
         return {
@@ -261,11 +271,11 @@ export async function fetchAemetBinaryFile(url: string, apiKey: string, timeout:
           intentos
         };
       } catch (downloadError) {
-        console.error('Error al descargar el archivo binario:', downloadError);
+        console.error('Error al descargar el archivo binario');
         
         if (intentos < MAX_RETRIES) {
           const retryDelay = Math.min(1000 * Math.pow(2, intentos - 1), 10000);
-          console.log(`Reintentando la descarga en ${retryDelay}ms...`);
+          console.log(`Reintentando descarga en ${Math.round(retryDelay/1000)}s...`);
           await new Promise(resolve => setTimeout(resolve, retryDelay));
           intentos++;
           continue;
@@ -281,7 +291,7 @@ export async function fetchAemetBinaryFile(url: string, apiKey: string, timeout:
       const isSocketHangUp = errorMessage.includes('socket hang up') || errorMessage.includes('timeout');
       
       if (isSocketHangUp && intentos < MAX_RETRIES) {
-        console.log(`Error "${errorMessage}". Reintentando (${intentos}/${MAX_RETRIES})...`);
+        console.log(`Error de conexión. Reintentando (${intentos}/${MAX_RETRIES})...`);
         // Esperar un tiempo antes de reintentar (tiempo exponencial)
         const retryDelay = Math.min(1000 * Math.pow(2, intentos - 1), 10000);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -290,7 +300,7 @@ export async function fetchAemetBinaryFile(url: string, apiKey: string, timeout:
       }
       
       if (axios.isAxiosError(error)) {
-        console.error('Error de Axios:', error.message);
+        console.error('Error en la petición:', error.message);
         
         if (error.response) {
           // Verificar si la respuesta es un HTML (error de Tomcat)

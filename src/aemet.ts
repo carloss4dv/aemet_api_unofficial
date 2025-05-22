@@ -261,7 +261,7 @@ export class Aemet {
       };
     } catch (error) {
       if (error instanceof Error) {
-        console.error(`Error al extraer la predicción del día: ${error.message}`);
+        console.error(`Error: No se pudo extraer la predicción del día - ${error.message}`);
       } else {
         console.error('Error desconocido al extraer la predicción del día');
       }
@@ -404,7 +404,7 @@ export class Aemet {
       
       return decimal;
     } catch (e) {
-      console.warn('Error al normalizar coordenada:', coord, e);
+      console.warn('Error al convertir coordenada:', coord);
       return 0;
     }
   }
@@ -829,7 +829,7 @@ export class Aemet {
         intentos
       };
     } catch (error) {
-      console.error('Error en getWeatherByCoordinates:', error);
+      console.error('Error al obtener datos meteorológicos por coordenadas');
       throw new Error('Error en la API de AEMET');
     }
   }
@@ -886,7 +886,7 @@ export class Aemet {
       // Devolver el código del municipio sin el prefijo 'id'
       return municipioMasCercano.id.replace('id', '');
     } catch (error) {
-      console.error('Error al obtener el municipio más cercano:', error);
+      console.error('Error al buscar municipio cercano a coordenadas');
       throw new Error('Error en la API de AEMET');
     }
   }
@@ -938,7 +938,7 @@ export class Aemet {
       // Calcular la distancia entre los puntos
       return this.calcularDistancia(latitud, longitud, latitudMunicipio, longitudMunicipio);
     } catch (error) {
-      console.error('Error al calcular la distancia al municipio:', error);
+      console.error('Error al calcular la distancia al municipio');
       throw new Error('Error en la API de AEMET');
     }
   }
@@ -1061,7 +1061,7 @@ export class Aemet {
 
       return periodoMasCercano;
     } catch (error) {
-      console.error('Error al obtener el periodo más cercano:', error);
+      console.error('Error al obtener el periodo más cercano para predicción');
       throw new Error('Error en la API de AEMET');
     }
   }
@@ -1154,7 +1154,6 @@ export class Aemet {
       await fs.ensureDir(tempDir);
       
       // 1. Descargar el archivo .tar desde el endpoint de AEMET usando la nueva función específica para archivos binarios
-      console.log('Descargando archivo de alertas...');
       const url = `${this.baseUrl}${ENDPOINTS.ALERTS_CAP_AREA_ESP}`;
       
       // Usar el nuevo método para descargar archivos binarios con un timeout mayor (30 segundos)
@@ -1162,30 +1161,29 @@ export class Aemet {
       
       // Guardar el archivo descargado
       await fs.writeFile(tarFilePath, tarBuffer);
-      console.log(`Archivo .tar guardado en ${tarFilePath}`);
+      console.log(`Procesando archivo de alertas...`);
       
       // 2. Extraer los archivos XML del archivo .tar
-      console.log('Extrayendo archivos XML...');
       try {
         await tar.extract({
           file: tarFilePath,
           cwd: tempDir,
-          onentry: (entry) => {
-            console.log(`Extrayendo archivo: ${entry.path}`);
+          onentry: () => {
+            // Log eliminado para reducir la salida
           }
         });
       } catch (extractError) {
-        console.error('Error al extraer el archivo tar:', extractError);
+        console.error('Error al extraer el archivo tar');
         // A veces el archivo tar puede tener un formato ligeramente diferente
         // Intentamos leer el archivo como raw buffer y escribir su contenido
-        console.log('Intentando método alternativo de extracción...');
+        console.log('Intentando método alternativo...');
         const rawContent = await fs.readFile(tarFilePath);
         // Buscar el inicio de la cabecera XML
         const xmlStartIndex = rawContent.indexOf(Buffer.from('<?xml'));
         if (xmlStartIndex >= 0) {
           const xmlContent = rawContent.slice(xmlStartIndex);
           await fs.writeFile(path.join(tempDir, 'alert.cap'), xmlContent);
-          console.log('Se ha extraído el contenido XML directamente');
+          console.log('Contenido XML extraído correctamente');
         } else {
           console.log('No se encontró contenido XML en el archivo');
         }
@@ -1193,9 +1191,7 @@ export class Aemet {
       
       // 3. Leer los archivos extraídos
       const allFiles = await fs.readdir(tempDir);
-      console.log('Contenido del directorio de extracción:');
-      allFiles.forEach(file => console.log(` - ${file}`));
-
+      
       // Buscar archivos CAP, XML o cualquier otro archivo que pueda contener datos de alertas
       const capFiles = allFiles.filter(file => 
         file.endsWith('.cap') || 
@@ -1204,7 +1200,7 @@ export class Aemet {
       );
       
       if (capFiles.length === 0) {
-        console.log('No se encontraron archivos CAP. Intentando buscar archivos con extensiones diferentes...');
+        console.log('Buscando archivos de alertas con otras extensiones...');
         
         // Si no encontramos archivos CAP, intentar leer el contenido de todos los archivos
         // excluyendo el original tar para ver si alguno contiene datos XML
@@ -1213,16 +1209,16 @@ export class Aemet {
             const content = await fs.readFile(path.join(tempDir, file), 'utf-8');
             // Verificar si el contenido parece ser XML
             if (content.trim().startsWith('<?xml')) {
-              console.log(`El archivo ${file} contiene XML`);
+              console.log(`Archivo XML válido encontrado`);
               capFiles.push(file);
             }
           } catch (error) {
-            console.log(`No se pudo leer el archivo ${file} como texto`);
+            // Log eliminado para reducir la salida
           }
         }
       }
       
-      console.log(`Se encontraron ${capFiles.length} archivos CAP/XML`);
+      console.log(`Procesando ${capFiles.length} archivos de alertas`);
       
       // 4. Crear la colección GeoJSON
       const features: AlertFeature[] = [];
@@ -1231,7 +1227,6 @@ export class Aemet {
       // 5. Procesar cada archivo XML
       for (const file of capFiles) {
         try {
-          console.log(`Procesando archivo: ${file}`);
           const fileContent = await fs.readFile(path.join(tempDir, file));
           
           // Intentar diferentes codificaciones
@@ -1245,17 +1240,13 @@ export class Aemet {
           
           // Verificar si parece un XML válido
           if (!xmlContent.trim().startsWith('<?xml')) {
-            console.log(`El archivo ${file} no parece ser un XML válido`);
             continue;
           }
           
-          console.log(`Parseando XML del archivo ${file}...`);
           const result = await parser.parseStringPromise(xmlContent);
-          console.log('Estructura del XML parseado:', JSON.stringify(result, null, 2).substring(0, 500) + '...');
           
           // Verifica si existe la estructura necesaria
           if (!result.alert || !result.alert.info) {
-            console.log(`El archivo ${file} no contiene la estructura de alerta esperada`);
             continue;
           }
           
@@ -1265,13 +1256,11 @@ export class Aemet {
           for (const infoItem of infoArray) {
             // Verificar si el idioma es español
             if (!infoItem.language || infoItem.language !== 'es-ES') {
-              console.log('Saltando alerta en idioma no español');
               continue;
             }
             
             // Saltar si no hay área definida
             if (!infoItem.area || !infoItem.area.polygon) {
-              console.log('Alerta sin información de área o polígono');
               continue;
             }
             
@@ -1317,8 +1306,9 @@ export class Aemet {
               }
             }
             
-            console.log(`Encontrada alerta de nivel: ${nivel}, fenómeno: ${fenomeno}`);
-            console.log(`Área afectada: ${infoItem.area.areaDesc || 'No especificada'}`);
+            if (nivel !== 'desconocido') {
+              console.log(`Alerta nivel ${nivel}: ${fenomeno} - ${infoItem.area.areaDesc || 'Área no especificada'}`);
+            }
             
             // Extraer el polígono (pueden ser varios)
             const polygons = Array.isArray(infoItem.area.polygon) 
@@ -1379,27 +1369,28 @@ export class Aemet {
                 }
                 
                 features.push(feature);
-                console.log(`Añadido polígono con ${coordinates.length} puntos`);
               } catch (polyError) {
-                console.error(`Error al procesar el polígono: ${polyError}`);
+                console.error(`Error al procesar el polígono`);
               }
             }
           }
         } catch (fileError) {
-          console.error(`Error al procesar el archivo ${file}: ${fileError}`);
+          console.error(`Error al procesar un archivo de alertas`);
         }
       }
       
       // 6. Si no se encontraron alertas y hay un archivo tar, intentar descomprimir con otras herramientas
       if (features.length === 0 && allFiles.includes('alertas.tar')) {
-        console.log('No se encontraron alertas. El servidor posiblemente devolvió un archivo vacío o no hay alertas activas actualmente.');
+        console.log('No se encontraron alertas activas actualmente');
+      } else {
+        console.log(`Se encontraron ${features.length} alertas meteorológicas`);
       }
       
       // 7. Limpiar archivos temporales
       try {
         await fs.remove(tempDir);
       } catch (cleanupError) {
-        console.warn(`Error al limpiar archivos temporales: ${cleanupError}`);
+        console.warn(`Error al limpiar archivos temporales`);
       }
       
       // 8. Devolver la FeatureCollection
@@ -1409,7 +1400,7 @@ export class Aemet {
         intentos
       };
     } catch (error) {
-      console.error('Error al obtener alertas GeoJSON:', error);
+      console.error('Error al obtener alertas meteorológicas');
       
       if (error instanceof Error) {
         throw new Error(`Error al obtener alertas meteorológicas: ${error.message}`);
